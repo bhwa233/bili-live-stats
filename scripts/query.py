@@ -242,6 +242,59 @@ def cmd_live(args):
             _out(f"  {i:>2d}. {name[:18]:20s}{money(v):>12s} 元")
 
 
+def cmd_site(args):
+    d = api('/site', timeout=30)
+    if args.json:
+        print(json.dumps(d, ensure_ascii=False, indent=2))
+        return
+    _out(f"站点：{d.get('siteName')}（{d.get('siteName_Short')}）  数据时间 {ts(d.get('date'))}")
+    _out(f"收录频道 {num(d.get('totalChannelsCount'))} · 直播中 {num(d.get('totalLivingCount'))} · "
+         f"弹幕片段 {num(d.get('totalSegmentsCount'))}")
+    _out(f"累计弹幕 {float(d.get('totalDanmakusCount') or 0) / 1e8:.2f} 亿 · "
+         f"查询次数 {num(d.get('queryCount'))}")
+    _out(f"采集速率 {num(d.get('totalDanmakuSpeed'))} 条/秒 · 在线客户端 {num(d.get('onlineClientCount'))} · "
+         f"录制占用 {num(d.get('recordingCount'))}/{num(d.get('recordingCapacity'))}")
+    doc = d.get('siteAPIDocAddress') or d.get('siteAPIDocURL')
+    if doc:
+        _out(f"官方 API 文档：{doc}")
+
+
+def cmd_month(args):
+    params = {'year': args.year, 'month': args.month,
+              'type': args.type, 'count': 30000 if args.total else args.n}
+    if args.area:
+        params['area'] = args.area
+    url = f'/rank/month?{urllib.parse.urlencode(params)}'
+    if args.total:
+        _out('· 正在拉取全量榜单（约 1~2 分钟）...')
+    rows = api(url, timeout=900) or []
+    rows.sort(key=lambda x: -(x.get('income') or 0))
+
+    if args.json:
+        print(json.dumps(rows, ensure_ascii=False, indent=2))
+        return
+
+    shown = rows[:args.n]
+    label = args.area or '全站'
+    _out(f"{args.year} 年 {args.month} 月 · {label} · 流水榜")
+    _out('-' * 76)
+    _out(f"{'#':>4s}  {'主播':22s}{'流水(元)':>12s}{'场次':>7s}{'弹幕':>12s}")
+    for i, x in enumerate(shown, 1):
+        ch = x.get('channel') or {}
+        _out(f"{i:>4d}  {(ch.get('uName') or '')[:20]:22s}"
+             f"{float(x.get('income') or 0):>12,.0f}"
+             f"{num(x.get('liveCount')):>7s}"
+             f"{num(x.get('danmakusCount')):>12s}")
+    _out('-' * 76)
+
+    if args.total:
+        s = sum(float(x.get('income') or 0) for x in rows)
+        _out(f"全量合计：{num(len(rows))} 个有流水的频道，流水 {s / 1e4:,.1f} 万元")
+    else:
+        s = sum(float(x.get('income') or 0) for x in shown)
+        _out(f"Top {len(shown)} 合计 {s / 1e4:,.1f} 万元（加 --total 求全量）")
+
+
 def cmd_rank(args):
     ch = channels_snapshot(args.refresh)
     metric = args.metric
@@ -316,7 +369,19 @@ def main():
     s.add_argument('live_id')
     s.set_defaults(func=cmd_live)
 
-    s = sub.add_parser('rank', help='全站榜单')
+    s = sub.add_parser('site', help='站点宏观指标')
+    s.set_defaults(func=cmd_site)
+
+    s = sub.add_parser('month', help='月度流水榜（支持分区筛选与全量求和）')
+    s.add_argument('year', type=int)
+    s.add_argument('month', type=int)
+    s.add_argument('n', nargs='?', type=int, default=30)
+    s.add_argument('--area', help='一级分区名，如 虚拟主播')
+    s.add_argument('--type', type=int, default=2, help='1=观看 2=流水 3=弹幕 4=场次')
+    s.add_argument('--total', action='store_true', help='拉全量并求和（慢，1~2 分钟）')
+    s.set_defaults(func=cmd_month)
+
+    s = sub.add_parser('rank', help='全站榜单（基于全站快照）')
     s.add_argument('metric', nargs='?', default='income',
                    choices=['income', 'danmaku', 'lives', 'fans'])
     s.add_argument('n', nargs='?', type=int, default=30)

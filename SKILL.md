@@ -24,13 +24,30 @@ python scripts/query.py <子命令> [参数]
 
 | 命令 | 用途 | 典型耗时 |
 |---|---|---|
+| `site` | **站点宏观指标**（收录频道/在播/累计弹幕/采集速率） | 1s |
+| `month <year> <month> [N]` | **月度流水榜**，`--area 虚拟主播` 筛分区，`--total` 全量求和 | 5s；全量 1~2min |
 | `info <mid>` | 主播概览（累计场次/总时长/总流水/场均） | 2~5s |
 | `lives <mid> [N]` | 最近 N 场明细（默认 20），支持 `--since` / `--until` | 2~5s |
 | `live <liveId>` | 单场收入构成 + 打赏 Top10 | 20~30s |
-| `rank [metric] [N]` | 全站榜单，metric = income/danmaku/lives/fans | 首次约 2min，之后 1~2s |
+| `rank [metric] [N]` | 全站榜单（基于全站快照），metric = income/danmaku/lives/fans | 首次约 2min，之后 1~2s |
 | `find <关键词>` | 按昵称搜 mid | 首次同上，之后 1~2s |
 
 全局加 `--json` 输出结构化数据，便于二次处理。
+
+### 宏观与月度统计
+
+站点有现成的宏观接口和月度榜，**不要用抽样估算**：
+
+```bash
+python scripts/query.py site                    # 全站总量
+python scripts/query.py month 2026 10           # 本月流水榜 Top30
+python scripts/query.py month 2026 10 20 --area 虚拟主播
+python scripts/query.py month 2026 10 --area 虚拟主播 --total   # 精确求和
+```
+
+`month --total` 会拉 `count=30000` 拿回全部有流水的频道再求和，是**精确值**（实测 2026-10 全站 8,160.6 万、虚拟区 2,396.9 万，占 29.4%）。
+
+> 官方 Swagger 文档：<https://ukamnads.icu/swagger>（86 个端点）。完整端点清单、字段表、参数说明见 `references/api.md`。
 
 ## 常用组合
 
@@ -78,6 +95,9 @@ python scripts/query.py rank income 30
 2. **`type=2` 筛选失效**：传 `type=2` 返回 `total=0`，筛不出舰长。脚本改为全量拉取后本地过滤。
 3. **`pageSize` 上限约 200**：传 500 会异常返回 35 条。仅在快速预览时使用分页，且不要超过 200。
 4. **域名要跟随重定向**：`danmakus.com/api/v2/*` 会 302 跳到 `ukamnads.icu`，普通 HTTP 客户端跟随即可，无需特殊处理。
+5. **Swagger spec 本身是坏 JSON**：`/swagger/v2/swagger.json` 有 11 处 `"kindValue": ,`，直接 `json.loads` 会失败，需正则替换为 `"kindValue": null,`。
+6. **`rank/month` 返回顺序不按 `income` 降序**：需要 Top N 时自行排序，不要依赖接口顺序。
+7. **`rank/range` 参数格式未明**：`range=30` 返回 400，用 `rank/month` 或 `rank/day` 替代。
 
 ## 注意事项
 

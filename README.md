@@ -34,13 +34,26 @@ python scripts/query.py info 2132180406
 
 | 命令 | 说明 | 耗时 |
 |---|---|---|
+| `site` | **站点宏观指标**（收录/在播/累计弹幕/采集速率） | 1s |
+| `month <year> <month> [N]` | **月度流水榜**，`--area` 筛分区，`--total` 全量求和 | 5s；全量 1~2min |
 | `info <mid>` | 主播概览 | 2~5s |
 | `lives <mid> [N]` | 最近 N 场（默认 20），支持 `--since` / `--until` | 2~5s |
 | `live <liveId>` | 单场收入构成 + 打赏 Top10 | 20~30s |
-| `rank [metric] [N]` | 全站榜单，metric = `income` / `danmaku` / `lives` / `fans` | 首次约 2min，之后 1~2s |
+| `rank [metric] [N]` | 全站榜单（基于全站快照），metric = `income` / `danmaku` / `lives` / `fans` | 首次约 2min，之后 1~2s |
 | `find <关键词>` | 按昵称搜 mid | 首次同上，之后 1~2s |
 
 全局参数 `--json` 输出结构化结果。
+
+### 宏观统计与月度榜单
+
+```bash
+python scripts/query.py site                                   # 全站总量
+python scripts/query.py month 2026 10                          # 本月流水榜 Top30
+python scripts/query.py month 2026 10 20 --area 虚拟主播        # 只看虚拟区
+python scripts/query.py month 2026 10 --area 虚拟主播 --total   # 精确求和
+```
+
+`--total` 会拉 `count=30000` 取回全部有流水的频道再求和，是精确值。实测 2026 年 10 月（1~18 日）：全站 **8,160.6 万元**，虚拟主播分区 **2,396.9 万元**（占 29.4%）。
 
 ### 示例
 

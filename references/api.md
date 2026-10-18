@@ -1,49 +1,38 @@
-# Danmakus API 使用说明
+# Danmakus API 完整参考
 
-> 实测时间：2026-10-18　数据来源：[danmakus.com](https://danmakus.com)（弹幕站）
-> 该站同时是 [laplace.live](https://laplace.live) 的后端数据源。
+> 实测时间：2026-10-18
+> 站点：[danmakus.com](https://danmakus.com)（B 站弹幕/直播数据监控站，laplace.live 的后端数据源）
+> **官方 Swagger**：<https://ukamnads.icu/swagger>（spec: `/swagger/v2/swagger.json`，共 86 个端点）
 
 ---
 
-## 0. 基础信息
+## 基础信息
 
 | 项 | 值 |
 |---|---|
-| API 入口 | `https://danmakus.com/api/v2`（同域，302 跳转到下者）<br>`https://ukamnads.icu/api/v2`（实际返回数据的域名） |
-| 站点域名 | `https://danmakus.com`（前端 SPA，数据同源） |
-| 协议 | HTTPS / REST / JSON（UTF-8） |
-| 鉴权 | **无**（不需要 key、cookie、token） |
-| CORS | `Access-Control-Allow-Origin: *`（浏览器端可直接跨域调用） |
+| API 入口 | `https://danmakus.com/api/v2`（同域，302 跳转到下者） |
+| 实际域名 | `https://ukamnads.icu/api/v2` |
+| 协议 | HTTPS / REST / JSON（部分 v3 接口返回 msgpack 二进制） |
+| 鉴权 | **无**（不需要 key / cookie / token） |
+| CORS | `Access-Control-Allow-Origin: *` |
 | 服务端 | Caddy + Kestrel (.NET) |
-| 官方文档 | **不存在**（`/api`、`/docs`、`/terms` 均 404） |
+| 使用条款 | **无**（`/terms`、`/privacy`、`/robots.txt` 均不存在） |
 
-### 调用方式：普通 HTTP 客户端即可
+### 调用方式
 
-**不需要**模拟浏览器、不需要特殊 header、不需要 cookie。普通 `requests` / `urllib` / `curl -L` 都能直接拿到数据。
-
-唯一要处理的是**域名重定向**：
-
-```
-GET https://danmakus.com/api/v2/{path}
-  → 302 Found
-     Location: https://ukamnads.icu/api/v2/{path}
-  → 200 JSON
-```
-
-`danmakus.com` 是别名入口，真正的数据由 `ukamnads.icu` 返回。两个域名都能用，让客户端跟随重定向即可：
+普通 HTTP 客户端即可，无特殊 header、无需模拟浏览器：
 
 ```python
 import requests
-r = requests.get("https://danmakus.com/api/v2/channel?uId=2132180406", timeout=90)
+r = requests.get("https://danmakus.com/api/v2/site", timeout=30)
 # requests 默认跟随 302，r.json() 直接可用
 ```
 
 ```bash
-curl -L "https://danmakus.com/api/v2/channel?uId=2132180406"
-# curl 不加 -L 只会拿到 302
+curl -L "https://danmakus.com/api/v2/site"    # 不加 -L 只会拿到 302
 ```
 
-> 排查记录：本机曾出现请求返回 `000` 的情况，实测是**本地 HTTP_PROXY 环境变量指向了一个不可用的代理**所致，与服务端无关。若在你机器上遇到连不通，先检查 `HTTP_PROXY` / `HTTPS_PROXY` 或临时 `unset` 掉再试。
+> 若本机请求失败并返回 `000`，先检查 `HTTP_PROXY` / `HTTPS_PROXY` 是否指向了不可用的代理，与服务端无关。
 
 ### 通用响应包装
 
@@ -51,307 +40,365 @@ curl -L "https://danmakus.com/api/v2/channel?uId=2132180406"
 { "code": 200, "message": "成功", "data": { ... } }
 ```
 
-失败时：`{"code": 404, "message": "未找到", "data": null}`
+失败时 `code` 非 200，`message` 为原因（如 `{"code":404,"message":"未找到","data":null}`）。
 
 ---
 
-## 1. 接口清单
+## 端点总览（86 个）
 
-| 接口 | 用途 | 单次体量 |
-|---|---|---|
-| `GET /api/v2/channels` | 全站所有频道概览 | **27 MB**（47,056 条） |
-| `GET /api/v2/channel?uId={mid}` | 单主播信息 + **全部场次列表** | 0.4 ~ 1.7 MB |
-| `GET /api/v2/live?liveId={uuid}` | 单场直播的逐条记录 | 1 KB ~ 7.2 MB |
+### Account（15）— 需登录，本项目不使用
 
----
-
-## 2. `GET /api/v2/channels` —— 全站频道列表
-
-无参数。一次返回全站所有收录频道（**不含场次明细**）。
-
-```python
-r = requests.get("https://danmakus.com/api/v2/channels", timeout=180)
-channels = r.json()["data"]      # list，长度 47056
+```
+GET  /api/v2/account/info                     账号信息
+GET  /api/v2/account/statistics               贡献统计
+POST /api/v2/account/statistics/report
+GET  /api/v2/account/channel-lives            已观测的直播场
+GET  /api/v2/account/contributed-lives        已贡献的直播场
+GET  /api/v2/account/recording                录制记录
+GET  /api/v2/account/add-record
+GET  /api/v2/account/del-record
+GET  /api/v2/account/search-points            查询积分
+GET  /api/v2/account/search-points/history    积分历史
+GET  /api/v2/account/core-config              客户端配置
+POST /api/v2/account/core-config
+POST /api/v2/account/update-name
+POST /api/v2/account/update-public-profile
+POST /api/v2/account/update-recording-setting
 ```
 
-返回 `data` 为数组，每个元素是 `channel` 对象（字段见 §4）。
+### DanmakuControllers（31）— 主数据接口
 
-实测规模：47,056 条 / 27MB / 耗时约 28 秒。
+```
+GET  /api/v2/site                     站点宏观统计 ★
+GET  /api/v2/channels                 全站频道列表（27MB）★
+GET  /api/v2/channel                  单主播 + 全部场次 ★
+GET  /api/v2/simpleChannel            主播精简信息
+GET  /api/v2/channel/filter           频道筛选（GET / POST）
+GET  /api/v2/live                     单场直播明细 ★
+GET  /api/v2/living                   当前在播（?includeExtra=true）
+GET  /api/v2/rank/month               月度榜（支持 area）★★★
+GET  /api/v2/rank/day                 日榜（支持 area）
+GET  /api/v2/rank/range               时间范围榜（参数格式未明，易 400）
+GET  /api/v2/vup-list                 虚拟主播专项列表 ★
+GET  /api/v2/area                     分区树（一级 → 二级）
+GET  /api/v2/guilds                   公会/MCN 查询
+GET  /api/v2/popularChannels          热门频道
+GET  /api/v2/popularUsers             热门用户
+GET  /api/v2/user                     UP 主信息
+GET  /api/v2/user/name                用户名查询
+GET  /api/v2/user/watchedChannels
+GET  /api/v2/user/watchedChannelsSimple
+GET  /api/v2/emoicons                 表情列表
+GET  /api/v2/add                      收录投稿（提交直播间）
+GET  /api/v2/comment/get              站内评论
+POST /api/v2/comment/add
+GET  /api/v2/live/comment/get         场次评论
+POST /api/v2/live/comment/add
+GET  /api/v2/user/comment/get
+POST /api/v2/user/comment/add
+GET  /api/v2/chat/get                 站内聊天
+POST /api/v2/chat/add
+GET  /api/v2/chat/tag
+```
+
+### AudienceLeaderboard（2）— 观众榜
+
+```
+GET  /api/v2/channel/audience-leaderboard    单主播的观众排行
+GET  /api/v2/rank/audience/day               全站观众日榜
+```
+
+### DanmakuSearch（4）— 弹幕全文搜索
+
+```
+GET  /api/v2/danmaku/search                  同步搜索
+POST /api/v2/danmaku/search/async            异步任务
+GET  /api/v2/danmaku/search/async/{taskId}   任务结果
+GET  /api/v2/danmaku/search/queue-stats      队列状态
+```
+
+### Contribution（8）— 贡献者（录制客户端用户）
+
+```
+GET  /api/v2/contribution/overview
+GET  /api/v2/contribution/hub
+GET  /api/v2/contribution/areas
+GET  /api/v2/contribution/contributor
+GET  /api/v2/contribution/me
+GET  /api/v2/contribution/minute-today
+GET  /api/v2/contribution/rank/day
+GET  /api/v2/contribution/rank/range
+```
+
+### DanmakuV3（8）— v3 版本，性能更好
+
+```
+GET  /api/v3/lives/{liveId}                  单场信息
+GET  /api/v3/lives/{liveId}/full             全量（含统计）
+GET  /api/v3/lives/{liveId}/delta            增量变更
+GET  /api/v3/lives/{liveId}/danmakus         弹幕列表
+GET  /api/v3/meta/index-background           首页轮播（msgpack）
+GET  /api/v3/meta/emoicons
+GET  /api/v3/users/{userId}/bootstrap        用户初始化数据包 ★
+GET  /api/v3/users/{userId}/history          用户历史 ★
+```
+
+### 其他
+
+```
+GET    /api/v3/lives/{liveId}/danmakus/after           弹幕游标翻页
+GET    /api/v3/lives/{liveId}/danmakus-with-identities 带匿名身份
+POST   /api/v2/streamer-status                         主播状态上报
+GET    /api/v2/core-runtime/*                          客户端运行时（14 个，含 ws 与上传）
+POST   /api/v3/user-analysis-jobs                      用户分析任务（5 个）
+```
+
+**带 ★ 的是本项目实际使用或推荐的接口。**
 
 ---
 
-## 3. `GET /api/v2/channel?uId={mid}` —— 主播 + 全部场次
+## 核心接口详解
 
-| 参数 | 类型 | 必填 | 说明 |
-|---|---|---|---|
-| `uId` | int | 是 | B 站用户 mid（空间页 `space.bilibili.com/{mid}` 里的数字） |
+### 1. `GET /api/v2/site` — 站点宏观统计
 
-返回结构：
+无参数。返回全站总量，是获取「大盘指标」的首选。
 
 ```json
 {
-  "data": {
-    "channel": { ... },        // 主播汇总，见 §4.1
-    "lives":  [ { ... } ]       // 场次数组，见 §4.2
-  }
+  "date": 1792303528304,
+  "isMaintenance": false,
+  "siteName": "弹幕站",
+  "siteAPIDocAddress": "https://ukamnads.icu/swagger",
+  "totalChannelsCount": 30119,      // 收录频道数
+  "totalLivingCount": 2168,         // 当前直播中
+  "totalSegmentsCount": 5696073,    // 弹幕片段数
+  "totalDanmakusCount": 8817006306, // 累计弹幕 88 亿
+  "officialDanmakuSpeed": 0,
+  "userDanmakuSpeed": 2000,         // 客户端抓取速率（条/秒）
+  "totalDanmakuSpeed": 2000,
+  "onlineCount": 48,                // 站点在线人数
+  "onlineClientCount": 82,          // 在线录制客户端数
+  "recordingCapacity": 1894,        // 录制容量上限
+  "recordingCount": 1808,           // 当前占用
+  "queryCount": 109584
 }
 ```
 
-**`lives` 返回该主播的全部历史场次**（不是最近 50 场）：
+> 注意：`totalChannelsCount`（30,119）与 `/channels` 返回的条数（47,056）不一致，后者含已删除/失效条目。
 
-| 主播 | 累计场次 | lives 实际返回 |
+### 2. `GET /api/v2/channels` — 全站频道列表
+
+无参数，返回 47,056 条、约 27MB、耗时约 28 秒。每条是 `channel` 对象（见字段表）。
+
+适合做全站快照、搜索，以及基于累计值的排序（作为 `/rank/*` 的降级方案）。
+
+### 3. `GET /api/v2/channel?uId={mid}` — 主播 + 全部场次
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `uId` | int | 是 | B 站 mid |
+
+返回 `{ channel: {...}, lives: [ ... ] }`。
+
+**`lives` 返回该主播的全部历史场次**，实测 983 场 / 1374 场均完整返回。约 1.2KB/场。
+
+**不支持任何分页**：`limit`、`pageNum`、`pageSize`、`recent` 传进去全部无效，永远返回全量。
+
+### 4. `GET /api/v2/live?liveId={uuid}` — 单场逐条记录
+
+| 参数 | 类型 | 说明 |
 |---|---|---|
-| 明前奶绿 | 983 | 983（最早 2022-07） |
-| 永雏塔菲 | 1,374 | 1,374（最早 2021-09） |
-| 枝堇Sumire | 100 | 101 |
+| `liveId` | str | 必填，取自 `lives[].liveId` |
+| `type` | int | 按记录类型过滤（**`type=2` 有 bug，见已知问题**） |
+| `pageNum` | int | 页码，从 1 开始 |
+| `pageSize` | int | 每页条数，**上限约 200** |
 
-平均 **约 1.2 KB / 场**。注意每个场次对象里还嵌了 `versions` 数组（断流分段记录），是体积偏大的主因，实际只用外层字段时可以忽略。
+返回 `{ total, pageNum, pageSize, hasMore, data: { channel, live, danmakus[] } }`。
+
+大主播单场可达 8 万条、7.2MB。
+
+### 5. `GET /api/v2/rank/month` — 月度榜 ★★★
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `year` | int | 是 | 年 |
+| `month` | int | 是 | 月 |
+| `type` | int | 是 | 榜单类型，见下表 |
+| `area` | string | 否 | 一级分区名，如 `虚拟主播` |
+| `count` | int | 否 | 返回条数；实测可到 30000（返回全部有数据者） |
+
+`type` 取值（实测推断）：
+
+| type | 排序维度 |
+|---|---|
+| 1 | 观看 |
+| 2 | 流水（income） |
+| 3 | 弹幕 |
+| 4 | 直播场次 |
+
+返回 `data: RankInfo[]`：
+
+```json
+{
+  "channel": { ...APIChannelInfo },
+  "liveIds": ["uuid", ...],
+  "watchCount": 2535870,
+  "interactionCount": 0,
+  "likeCount": 0,
+  "paidCount": 0,
+  "liveCount": 17,
+  "danmakusCount": 2180247,
+  "income": 274395.3
+}
+```
+
+**这是计算「全站/分区月度总流水」的正确方式**：一次请求 `count=30000` 拿回全部有流水的频道，对 `income` 求和即可，无需抽样。
+
+实测（2026-10，01~18 日）：
+- 全站：17,638 条，合计 **8,160.6 万元**（101 秒 / 22MB）
+- `area=虚拟主播`：5,709 条，合计 **2,396.9 万元**（26 秒 / 7MB）→ 占 **29.4%**
+
+### 6. `GET /api/v2/rank/day` — 日榜
+
+参数同上（`year`+`month`+`day`+`type`），另有 `area`、`count`。
+
+### 7. `GET /api/v2/vup-list` — 虚拟主播专项名单
+
+返回 `{ [mid]: VTBInfo }`，是站内维护的 VUP 名单，可直接用于「只看虚拟主播」的过滤。
+
+### 8. `GET /api/v2/living` — 当前在播
+
+参数 `includeExtra`（bool），返回 `APIChannelInfo[]`。
+
+### 9. `GET /api/v2/area` — 分区树
+
+返回 `{ "一级分区": ["二级分区", ...] }`，用于构造 `area` 过滤参数。
+
+### 10. `GET /api/v3/users/{userId}/bootstrap` 与 `/history`
+
+v3 接口，数据更聚合。`bootstrap` 一次返回用户的基础信息 + 统计，`history` 返回历史。适合替代 `/channel` 的轻量查询（响应更小）。
+
+> v3 接口部分返回 **msgpack 二进制**（如 `meta/index-background`），需 msgpack 解码，不能直接 `json.loads`。
 
 ---
 
-## 4. 字段说明
+## 字段表
 
-### 4.1 `channel` 对象
+### `channel` 对象
 
 | 字段 | 类型 | 含义 |
 |---|---|---|
 | `uId` | int | B 站 mid |
 | `uName` | str | 主播名 |
 | `roomId` | int | 直播间号 |
-| `faceUrl` | str | 头像 URL |
-| `isLiving` | bool | 当前是否在播 |
-| `title` | str | 最近一场的标题 |
+| `faceUrl` | str | 头像 |
+| `isLiving` | bool | 是否在播 |
+| `isDeleted` | bool | 是否已失效 |
+| `title` | str | 最近一场标题 |
+| `tags` | array | 标签 |
 | `fansCount` | int | 粉丝数 |
 | `followCount` | int | 关注数 |
 | `totalLiveCount` | int | 累计场次 |
-| `totalLiveSecond` | int | 累计直播时长（秒） |
-| `totalDanmakuCount` | int | 累计弹幕数 |
-| `totalIncome` | float | **累计流水（元）** |
-| `lastLiveDate` | int | 最近一场开始时间（ms 时间戳） |
-| `lastLiveIncome` | float | 最近一场流水（元） |
+| `totalLiveSecond` | int | 累计时长（秒） |
+| `totalDanmakuCount` | int | 累计弹幕 |
+| `totalIncome` | float | 累计流水（元） |
+| `lastLiveDate` | int | 最近开播时间（ms） |
+| `lastLiveIncome` | float | 最近一场流水 |
 | `lastLiveDanmakuCount` | int | 最近一场弹幕数 |
-| `lastUpdateStatAt` | int | 统计最后更新时间（ms） |
-| `addDate` | str | 收录进本站的时间 |
-| `isDeleted` | bool | 是否已删除/失效 |
-| `tags` | array | 标签（常为空） |
+| `lastUpdateStatAt` | int | 统计更新时间（ms） |
+| `addDate` | str | 收录时间 |
 
-### 4.2 `lives[]` 单个场次
+### `lives[]` 场次对象
 
 | 字段 | 类型 | 含义 |
 |---|---|---|
-| `liveId` | str | **场次唯一 ID（UUID），拉明细必用** |
-| `title` | str | 场次标题 |
-| `startDate` | int | 开播时间（ms） |
-| `stopDate` | int | 下播时间（ms） |
+| `liveId` | str | 场次 UUID |
+| `title` | str | 标题 |
+| `startDate` / `stopDate` | int | 起止时间（ms） |
 | `totalIncome` | float | **本场流水（元）** |
-| `watchCount` | int | **本场观看人数** |
-| `danmakusCount` | int | 本场弹幕数 |
+| `watchCount` | int | 观看人数 |
+| `danmakusCount` | int | 弹幕数 |
 | `interactionCount` | int | 互动数 |
 | `payCount` | int | 付费人数 |
 | `likeCount` | int | 点赞数 |
-| `maxOnlineCount` | int | 峰值在线人数 |
-| `commentCount` | int | 评论数 |
-| `parentArea` | str | 一级分区（如"虚拟主播"） |
-| `area` | str | 二级分区（如"虚拟日常"） |
-| `coverUrl` | str | 封面图 |
-| `isFinish` | bool | 是否已结束 |
-| `isFull` | bool | 是否完整录制 |
-| `isMerged` | bool | 是否已合并分段 |
-| `versions` | array | 分段/断流版本记录 |
-
-> 计算时长：`(stopDate - startDate) / 1000` 秒。
-> 同一主播同一天可能出现多场，用 `startDate` 排序即可。
-
----
-
-## 5. `GET /api/v2/live?liveId={uuid}` —— 单场逐条记录
-
-| 参数 | 类型 | 说明 |
-|---|---|---|
-| `liveId` | str | 必填，取自 `lives[].liveId` |
-| `type` | int | 可选，按记录类型过滤（**有坑，见 §6**） |
-| `pageNum` | int | 可选，页码，从 1 开始 |
-| `pageSize` | int | 可选，每页条数；不传则返回全部 |
-
-返回结构：
-
-```json
-{
-  "data": {
-    "total": 80014,          // 总记录数
-    "pageNum": 1,
-    "pageSize": 10,
-    "hasMore": true,
-    "data": {
-      "channel": { ... },
-      "live":    { ... },     // 同 §4.2 的场次对象
-      "danmakus": [ ... ]     // 逐条记录，见下表
-    }
-  }
-}
-```
+| `maxOnlineCount` | int | 峰值在线 |
+| `parentArea` | str | 一级分区 |
+| `area` | str | 二级分区 |
+| `coverUrl` | str | 封面 |
+| `isFinish` / `isFull` / `isMerged` | bool | 结束/完整/已合并 |
+| `versions` | array | 断流分段记录 |
 
 ### `danmakus[]` 单条记录
 
 | 字段 | 类型 | 含义 |
 |---|---|---|
-| `uId` | int | 发送者 mid |
-| `uName` | str | 发送者昵称 |
-| `type` | int | 记录类型，见下表 |
-| `sendDate` | int | 发送时间（ms） |
-| `message` | str | 内容（弹幕文本 / SC 内容 / 礼物名） |
-| `price` | float | **金额（元）**，仅付费记录有 |
-| `count` | int | 数量（礼物个数、舰长月数） |
+| `uId` / `uName` | int/str | 发送者 |
+| `type` | int | 记录类型 |
+| `sendDate` | int | 时间（ms） |
+| `message` | str | 内容 |
+| `price` | float | **金额（元，已是总价）** |
+| `count` | int | 数量 |
 
-### `type` 编码
+`type` 编码：
 
-| type | 含义 | 有 price | 实测条数（样例场） |
-|---|---|---|---|
-| `0` | 普通弹幕 | 否 | 41,425 |
-| `1` | **礼物**（含粉丝团灯牌等小额） | 是 | 535 |
-| `2` | **大航海 / 舰长** | 是 | 5 |
-| `3` | **醒目留言 SC** | 是 | 178 |
-| `4` | 入场 / 看过 | 否 | 37,868 |
-
-**流水校验（重要）**：`type 1 + 2 + 3` 的 `price` 之和 **等于** 场次的 `totalIncome`。
-
-实测样例：礼物 1,402.00 + 舰长 750.00 + SC 5,332.00 = **7,484.00** = 接口 `totalIncome`，分毫不差。
-
----
-
-## 6. 已知坑（务必注意）
-
-### 6.1 `type=2` 筛选失效
-
-`type=2` 传进去会返回 `total=0`，**筛不出舰长记录**（服务端 bug）。而全量返回里明明有 `type=2` 的数据。
-
-| 参数 | 结果 |
-|---|---|
-| `type=0` / `type=1` / `type=3` / `type=4` | ✅ 正常过滤 |
-| `type=2` | ❌ total=0 |
-| `type=1,2,3` | ❌ 只按最后一个生效（返回 178 = SC 数） |
-
-**绕法一（推荐）**：只拉 `type=1` 和 `type=3`，舰长金额用总流水反推：
-
-```
-舰长金额 = totalIncome - (礼物总额 + SC总额)
-```
-
-**绕法二**：全量拉取（7.2MB）后本地过滤 `type==2`。
-
-### 6.2 全量明细很贵
-
-一场大主播 8 万条记录 ≈ 7.2MB。全场次明细全站 ≈ 1TB。**能分页就分页，能按 type 筛就筛。**
-
-### 6.3 `versions` 冗余
-
-`lives[].versions` 会把整场信息再嵌一层，占掉不少体积。只需要核心指标时不解析它即可。
-
-### 6.4 无 SLA、无文档
-
-接口随时可能变更或加限制。**首次拉到数据就落库，不要把它当唯一数据源。**
-
----
-
-## 7. 代码示例
-
-### 7.1 拉单个主播的全部场次
-
-```python
-import requests
-
-r = requests.get("https://danmakus.com/api/v2/channel?uId=2132180406", timeout=90)
-d = r.json()["data"]
-c = d["channel"]
-print(c["uName"], c["totalLiveCount"], c["totalIncome"])
-
-for lv in d["lives"]:
-    dur = (lv["stopDate"] - lv["startDate"]) / 1000 / 3600
-    print(lv["startDate"], f'{dur:.1f}h', lv["totalIncome"], lv["watchCount"])
-```
-
-### 7.2 拉单场流水明细（只取付费记录）
-
-```python
-live_id = "1c8b7094-5c3c-401f-aaef-6c61ec493296"
-
-def collect(live_id, t):
-    out, page = [], 1
-    while True:
-        r = requests.get(f"https://danmakus.com/api/v2/live?liveId={live_id}"
-                         f"&type={t}&pageNum={page}&pageSize=500", timeout=60)
-        d = r.json()["data"]
-        out += d["data"]["danmakus"]
-        if not d["hasMore"]:
-            return out
-        page += 1
-
-gift = collect(live_id, 1)   # 礼物
-sc   = collect(live_id, 3)   # SC
-print("礼物", sum(x["price"] for x in gift),
-      "SC", sum(x["price"] for x in sc))
-```
-
-### 7.3 全站频道快照
-
-```python
-r = requests.get("https://danmakus.com/api/v2/channels", timeout=180)
-rows = [{
-    "mid": c["uId"], "name": c["uName"], "fans": c["fansCount"],
-    "lives": c["totalLiveCount"], "income": c["totalIncome"],
-} for c in r.json()["data"]]
-```
-
----
-
-## 8. 全站数据规模（实测汇总）
-
-| 指标 | 数值 |
-|---|---|
-| 收录频道 | 47,056（有直播记录 28,921，占 61.5%） |
-| 总场次 | 4,581,089 |
-| 总弹幕 | 5,428,031,582（54.3 亿） |
-| 总时长 | 17,667,829 小时（≈2017 年） |
-| 总流水 | 3,136,331,988 元（31.36 亿） |
-| 场均弹幕 | 1,185 |
-| 场均流水 | 685 元 |
-
-存储体量分层估算：
-
-| 层级 | 内容 | 体量 | 请求次数 |
-|---|---|---|---|
-| 主播级 | 每个主播累计值 | 27 MB | 1 |
-| 场次级 | 每场流水/观看/弹幕/时长 | ≈5.5 GB | 47,056 |
-| 逐条明细 | 每条弹幕/礼物/SC/舰长 | ≈1 TB（104.8 亿条） | 4,581,089 |
-
----
-
-## 9. 做一个 laplace 同款统计页需要什么
-
-`laplace.live/stats/{mid}` 的每个模块，对应的取数方式：
-
-| 页面模块 | 数据来源 | 计算方式 |
+| type | 含义 | 有 price |
 |---|---|---|
-| 头部：主播名 / 头像 / 粉丝 | `channel` | 直接取 |
-| 总时长 | `channel.totalLiveSecond` | 格式化为 `H:MM:SS` |
-| 场均时长 | — | `totalLiveSecond / totalLiveCount` |
-| 总弹幕 | `channel.totalDanmakuCount` | 直接取 |
-| 场均弹幕 | — | `totalDanmakuCount / totalLiveCount` |
-| 流水曲线 | `lives[].totalIncome` | 按 `startDate` 排序出点 |
-| 观看曲线 | `lives[].watchCount` | 同上 |
-| 互动曲线 | `lives[].interactionCount` | 同上 |
-| 弹幕曲线 | `lives[].danmakusCount` | 同上 |
-| 人均弹幕 | — | `danmakusCount / watchCount` |
-| 场次列表 | `lives[]` | 按 `startDate` 倒序 |
-| 单场下钻（礼物/SC/舰长构成） | `/live?liveId=` | 按 `type` 分组求和 |
-
-**结论：`channel` 一个接口就能喂满整个页面，`/live` 只用于单场下钻。**
+| 0 | 普通弹幕 | 否 |
+| 1 | 礼物 | 是 |
+| 2 | 大航海 / 舰长 | 是 |
+| 3 | 醒目留言 SC | 是 |
+| 4 | 入场 / 看过 | 否 |
 
 ---
 
-## 10. 使用边界
+## 数据口径（必须遵守）
 
-- 无书面授权，仅"技术上开放"（CORS `*`）。数据涉及主播收益，属敏感信息。
-- 个人研究、内部使用风险低；**对外产品化或公开传播流水榜，请先联系 `i@danmakus.com` 说明用途。**
-- 控制频率：不要分钟级轮询，不要并发轰炸。批量抓取建议 1 请求/秒起步。
-- 该站靠社区投稿（"添加主播"）和用户挂客户端维持，属于用爱发电，请勿滥用。
+**流水** = `type` ∈ {1, 2, 3} 的 `price` 之和。
+
+- `price` 已是该条记录的总金额，**不要再乘 `count`**。`{"price":2,"count":20}` 表示 2 元买 20 个，总额就是 2 元。
+- 该口径与接口 `totalIncome` 分毫不差（实测：1402.00 + 750.00 + 5332.00 = 7484.00）。
+
+**人均弹幕** = `danmakusCount / interactionCount`（对齐 laplace.live），不是除以观看人数。
+
+**时长** = `(stopDate - startDate) / 1000` 秒。
+
+---
+
+## 已知问题（实测踩坑记录）
+
+| # | 问题 | 影响 | 应对 |
+|---|---|---|---|
+| 1 | `/live` 分页丢数据：`total=535` 时分页只能取到 303 条唯一记录，页内还有重复 | 用分页算流水会算错 | **全量拉取**，不传 `pageSize` |
+| 2 | `type=2` 筛选失效：传 `type=2` 返回 `total=0` | 筛不出舰长记录 | 全量拉取后本地过滤 |
+| 3 | `pageSize` 上限约 200，传 500 异常返回 35 条 | 分页异常 | 不超过 200 |
+| 4 | `/swagger/v2/swagger.json` 含非法 JSON：11 处 `"kindValue": ,` | 无法直接解析 | 正则替换为 `"kindValue": null,` |
+| 5 | `/rank/range` 参数格式未明，`range=30` 返回 400 | 无法用范围榜 | 用 `rank/month` 或 `rank/day` 替代 |
+| 6 | `/rank/month` 返回顺序不严格按 `income` 降序 | 不能依赖顺序取 Top N | 自行排序 |
+| 7 | v3 部分接口返回 msgpack 而非 JSON | `json.loads` 失败 | 用 msgpack 解码 |
+| 8 | 域名 302 跳转 | `curl` 不加 `-L` 只能拿到跳转 | 跟随重定向 |
+
+---
+
+## 数据规模与覆盖
+
+| 指标 | 数值（2026-10-18 实测） |
+|---|---|
+| 收录频道 | 30,119（`/site`）／47,056（`/channels` 含失效） |
+| 有直播记录 | 28,921 |
+| 总场次 | 4,581,089 |
+| 累计弹幕 | 54.3 亿（`/channels` 求和）／88.2 亿（`/site`） |
+| 累计流水 | 31.36 亿元 |
+| 累计时长 | 1,766 万小时（约 2017 年） |
+
+**数据来源**：该站靠社区投稿（「添加主播」）与用户挂客户端录制（「支持榜」）采集，不是官方数据。
+**2026-01-24 曾发生服务器被黑，全部历史弹幕记录丢失**，站内有公告。
+**覆盖不全**：没有记录/不更新的直播间就是没人录，新号小号大概率缺失。
+
+---
+
+## 使用边界
+
+- 无书面授权，仅技术上开放（CORS `*`）。
+- 数据涉及主播收益，属敏感信息。个人研究、内部使用风险低；**对外产品化或公开传播流水榜，请先联系 `i@danmakus.com`**。
+- 控制频率：批量场景 1 请求/秒起步，不要并发轰炸。`rank/month count=30000` 这类重查询每次耗时 1~2 分钟，不要重复调用。
+- 站点靠社区贡献维持，请勿滥用。
