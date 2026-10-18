@@ -32,7 +32,8 @@ python scripts/query.py <子命令> [参数]
 | `rank [metric] [N]` | 全站榜单（基于全站快照），metric = income/danmaku/lives/fans | 首次约 2min，之后 1~2s |
 | `find <关键词>` | 按昵称搜 mid | 首次同上，之后 1~2s |
 
-全局加 `--json` 输出结构化数据，便于二次处理。
+全局加 `--json` 输出结构化数据，便于二次处理。**`--json` 必须放在子命令之前**（argparse 限制）：
+`query.py --json lives 12345` ✔　`query.py lives 12345 --json` ✘
 
 ### 宏观与月度统计
 
